@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Browser Detection (Feature + UA)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: Arial, sans-serif; text-align:center; padding:40px; background:#f4f6f8; color:#111; }
+    .card { display:inline-block; background:#fff; padding:24px; border-radius:12px; box-shadow:0 6px 18px rgba(0,0,0,0.08); }
+    .result { font-size:1.5rem; margin:14px 0; font-weight:700; }
+    .note { color:#555; margin:8px 0; }
+    .warning { color:#7a0b0b; background:#ffecec; padding:12px; border-radius:8px; margin-top:12px; }
+    .serious { font-weight:700; margin-top:8px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Browser Detector (UA + Feature)</h1>
+    <div id="browserResult" class="result">Detecting…</div>
+    <div id="details" class="note"></div>
+    <div id="warning" class="warning" style="display:none;"></div>
+  </div>
+
+  <script>
+    // Feature checks
+    function featureChecks() {
+      const features = {
+        hasInstallTrigger: typeof InstallTrigger !== 'undefined',            // Firefox
+        hasMozAppearance: ('MozAppearance' in document.documentElement.style), // Firefox CSS engine hint
+        hasChromeObject: !!window.chrome,                                   // Chrome-ish
+        chromeHasRuntime: !!(window.chrome && window.chrome.runtime),
+        chromeHasWebstore: !!(window.chrome && window.chrome.webstore),
+        vendorIsGoogle: (navigator.vendor && navigator.vendor.includes('Google')),
+      };
+      return features;
+    }
+
+    // UA checks
+    function uaChecks() {
+      const ua = navigator.userAgent;
+      return {
+        ua: ua,
+        uaIsChrome: ua.includes('Chrome') && !ua.includes('Edg') && !ua.includes('OPR'),
+        uaIsFirefox: ua.includes('Firefox'),
+        uaIsEdge: ua.includes('Edg'),
+        uaIsOpera: ua.includes('OPR'),
+      };
+    }
+
+    function detectBrowser() {
+      const f = featureChecks();
+      const u = uaChecks();
+
+      // Determine "likely real" by feature presence (features are harder to fake than UA string)
+      // We consider Firefox if Firefox-specific features are present.
+      const likelyFirefox = f.hasInstallTrigger || f.hasMozAppearance;
+      const likelyChrome = f.hasChromeObject && (f.chromeHasRuntime || f.chromeHasWebstore || u.vendorIsGoogle);
+
+      // Decide final label and detect mismatch (simple heuristics)
+      let label;
+      let spoof = false;
+      let reason = [];
+
+      if (likelyFirefox && u.uaIsChrome) {
+        // UA says Chrome but features say Firefox -> spoof
+        label = 'Firefox (detected by features — UA says Chrome)';
+        spoof = true;
+        reason.push('UA reports Chrome but Firefox-only features are present.');
+      } else if (likelyChrome && u.uaIsFirefox) {
+        label = 'Chrome (detected by features — UA says Firefox)';
+        spoof = true;
+        reason.push('UA reports Firefox but Chrome-only features are present.');
+      } else if (likelyFirefox) {
+        label = 'Firefox';
+      } else if (likelyChrome) {
+        label = 'Chrome';
+      } else {
+        // Fallback to UA if features inconclusive
+        if (u.uaIsChrome) label = 'Chrome (by UA)';
+        else if (u.uaIsFirefox) label = 'Firefox (by UA)';
+        else label = 'Firefox (default)'; // your requested default
+      }
+
+      // Additional minor checks to strengthen evidence
+      if (u.uaIsChrome && !f.hasChromeObject) {
+        reason.push('UA contains "Chrome" but window.chrome object not found.');
+      }
+      if (u.uaIsFirefox && !f.hasInstallTrigger && !f.hasMozAppearance) {
+        reason.push('UA contains "Firefox" but Firefox features not present.');
+      }
+
+      return { label, spoof, reason, features: f, ua: u.ua };
+    }
+
+    // Render result
+    const res = detectBrowser();
+    document.getElementById('browserResult').textContent = 'You are using: ' + res.label;
+    const details = [
+      'User-Agent: ' + navigator.userAgent,
+      'Feature clues: ' + JSON.stringify(res.features)
+    ].join('\n\n');
+    document.getElementById('details').textContent = details;
+
+    if (res.spoof) {
+      const warn = document.getElementById('warning');
+      warn.style.display = 'block';
+      warn.innerHTML = `
+        <div class="serious">Important — detected user-agent spoofing or mismatch.</div>
+        <div style="margin-top:8px;">${res.reason.join(' ')}</div>
+        <div style="margin-top:10px;">
+          If you were planning to use this to bypass restrictions, scrape content, or impersonate other users/sites:
+          stop. That can have serious consequences (service bans, legal exposure depending on what you do).
+        </div>
+        <div style="margin-top:8px; font-style:italic;">(Pretend this is the part where a federal investigator frowns deeply.)</div>
+      `;
+    }
+  </script>
+</body>
+</html>
